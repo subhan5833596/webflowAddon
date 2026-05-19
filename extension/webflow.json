@@ -1,0 +1,13 @@
+{
+  "name": "CentreBlock",
+  "publicDir": "public",
+  "size": "default",
+  "apiVersion": "2",
+  "telemetry": {
+    "global": {
+      "allowTelemetry": true,
+      "lastPrompted": 1778737003008,
+      "version": "1.21.0"
+    }
+  }
+}

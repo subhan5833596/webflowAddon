@@ -1,0 +1,16 @@
+{
+  "name": "centreblock-extension",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "build": "npm install && tsc -p tsconfig.json && webflow extension bundle",
+    "dev": "npm install && concurrently -r \"webflow extension serve\" \"tsc -p tsconfig.json --watch --preserveWatchOutput\"",
+    "bundle": "webflow extension bundle"
+  },
+  "devDependencies": {
+    "@webflow/designer-extension-typings": "^2.0.2",
+    "concurrently": "^8.2.2",
+    "typescript": "^5.4.5"
+  }
+}

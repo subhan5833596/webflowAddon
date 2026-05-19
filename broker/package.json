@@ -1,0 +1,17 @@
+{
+  "name": "centreblock-broker",
+  "version": "1.0.0",
+  "description": "Secret broker for CentreBlock Webflow integration",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "node-fetch": "^3.3.2"
+  }
+}
