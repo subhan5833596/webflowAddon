@@ -16,8 +16,8 @@
   "use strict";
 
   const CONFIG = window.__CENTREBLOCK_CONFIG__ || {
-    siteId: "REPLACE_WITH_SITE_ID",
-    brokerUrl: "REPLACE_WITH_BROKER_URL",
+    siteId: "66fbd171291413aa1f7ebcd8",
+    brokerUrl: "https://webflowaddon.onrender.com",
     audience: "default",
     debug: false,
   };
