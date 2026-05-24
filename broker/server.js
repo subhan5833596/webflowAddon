@@ -303,11 +303,14 @@ app.post("/token", async (req, res) => {
 // ============================================================
 app.post("/trigger/:variableName", async (req, res) => {
   const { variableName } = req.params;
-  const token = req.headers["x-cb-token"];
+  // Accept token from EITHER header (normal fetch) OR query param (sendBeacon)
+  const token = req.headers["x-cb-token"] || req.query.token;
   const body = req.body || {};
 
   if (!token)
-    return res.status(400).json({ error: "x-cb-token header required" });
+    return res
+      .status(400)
+      .json({ error: "x-cb-token header or ?token= required" });
 
   try {
     const cbRes = await fetch(`${CB_API}trigger/${variableName}`, {

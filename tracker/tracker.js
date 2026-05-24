@@ -12,6 +12,18 @@
      4. Reads data-cbtags for direction, page, custom tags
    ============================================================ */
 
+/* ============================================================
+   CentreBlock Tracker for Webflow
+   ------------------------------------------------------------
+   Reads data-cbtrigger and data-cbtags attributes from elements
+   and fires triggers via broker → CentreBlock.
+
+   KEY FIXES:
+     1. Token is fetched EAGERLY on page load (not on first click)
+     2. sendBeacon used for trigger fire (survives page navigation)
+     3. Fallback to fetch with keepalive when sendBeacon not available
+   ============================================================ */
+
 (function () {
   "use strict";
 
@@ -36,11 +48,13 @@
   let tokenPromise = null;
 
   // ============================================================
-  // Token management
+  // Get token (fetches once, then caches)
   // ============================================================
   function getToken() {
     if (consumerToken) return Promise.resolve(consumerToken);
     if (tokenPromise) return tokenPromise;
+
+    log("requesting token...");
 
     tokenPromise = fetch(CONFIG.brokerUrl + "/token", {
       method: "POST",
@@ -81,7 +95,6 @@
 
   // ============================================================
   // Parse data-cbtags="page:home,direction:Positive,key:value"
-  // into { page: "home", direction: "Positive", key: "value" }
   // ============================================================
   function parseCbTags(tagString) {
     const result = {};
@@ -118,41 +131,66 @@
   }
 
   // ============================================================
-  // Fire a trigger via broker
+  // Fire a trigger - uses sendBeacon for navigation-safe delivery
   // ============================================================
-  async function fireTrigger(variableName, tags) {
+  function fireTrigger(variableName, tags) {
     tags = tags || {};
-    try {
-      const token = await getToken();
-      const res = await fetch(
-        CONFIG.brokerUrl + "/trigger/" + encodeURIComponent(variableName),
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-cb-token": token,
-            "ngrok-skip-browser-warning": "true",
-          },
-          body: JSON.stringify({ tags: tags }),
-        },
-      );
-      log("trigger " + variableName + " → " + res.status, tags);
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        log("  ↳ error response:", text.slice(0, 200));
-      }
-    } catch (err) {
-      log("trigger " + variableName + " failed", err);
+
+    if (!consumerToken) {
+      // Token not ready yet - try to send anyway, but log warning
+      log("⚠ firing trigger without token (will retry)", variableName);
+      // Try to get token, then fire
+      getToken()
+        .then(() => sendTrigger(variableName, tags))
+        .catch((err) => log("trigger " + variableName + " failed", err));
+      return;
     }
+
+    sendTrigger(variableName, tags);
+  }
+
+  function sendTrigger(variableName, tags) {
+    const url =
+      CONFIG.brokerUrl + "/trigger/" + encodeURIComponent(variableName);
+    const body = JSON.stringify({ tags: tags });
+
+    // Strategy 1: sendBeacon (survives page navigation, fire-and-forget)
+    // sendBeacon doesn't allow custom headers, so we put token in URL as query param
+    // and broker will support both (header OR query param)
+    if (navigator.sendBeacon) {
+      const urlWithToken = url + "?token=" + encodeURIComponent(consumerToken);
+      const blob = new Blob([body], { type: "application/json" });
+      const ok = navigator.sendBeacon(urlWithToken, blob);
+      if (ok) {
+        log("trigger " + variableName + " → sendBeacon ✓", tags);
+        return;
+      }
+      log("sendBeacon returned false, falling back to fetch", variableName);
+    }
+
+    // Strategy 2: fetch with keepalive (survives page navigation in modern browsers)
+    fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-cb-token": consumerToken,
+        "ngrok-skip-browser-warning": "true",
+      },
+      body: body,
+      keepalive: true,
+    })
+      .then((res) => {
+        log("trigger " + variableName + " → " + res.status, tags);
+      })
+      .catch((err) => {
+        log("trigger " + variableName + " failed", err);
+      });
   }
 
   // ============================================================
   // PAGE trigger — fires once on load
-  // Looks for data-cbtrigger on <body> or <html>
-  // If not found, skips (no auto-generated page triggers anymore)
   // ============================================================
   function firePageTrigger() {
-    // Check body first, then html
     const pageEl = document.body.getAttribute("data-cbtrigger")
       ? document.body
       : document.documentElement.getAttribute("data-cbtrigger")
@@ -186,7 +224,6 @@
     document.addEventListener(
       "click",
       function (ev) {
-        // Find nearest ancestor with data-cbtrigger attribute
         const target =
           ev.target.closest && ev.target.closest("[data-cbtrigger]");
         if (!target) return;
@@ -210,18 +247,29 @@
       },
       true,
     );
-    log("click tracking attached (only fires on elements with data-cbtrigger)");
+    log("click tracking attached");
   }
 
   // ============================================================
-  // Boot
+  // Boot - fetch token EAGERLY before any click happens
   // ============================================================
   function boot() {
     if (CONFIG.siteId === "REPLACE_WITH_SITE_ID") {
       console.warn("[CB-Tracker] not configured — siteId missing");
       return;
     }
+
+    // STEP 1: Get token immediately on page load
+    // This way it's ready by the time user clicks
+    getToken().catch(() => {
+      // Token fetch failed, but we still attach click listeners
+      // (clicks will retry token fetch)
+    });
+
+    // STEP 2: Fire page trigger if body/html has data-cbtrigger
     firePageTrigger();
+
+    // STEP 3: Attach click listeners
     attachClickTracking();
   }
 
@@ -232,12 +280,15 @@
   }
 
   // ============================================================
-  // Debug helpers (available in browser console)
+  // Debug helpers
   // ============================================================
   window.CentreBlock = {
     config: CONFIG,
     fireTrigger: fireTrigger,
     getToken: getToken,
     parseCbTags: parseCbTags,
+    hasToken: function () {
+      return !!consumerToken;
+    },
   };
 })();
