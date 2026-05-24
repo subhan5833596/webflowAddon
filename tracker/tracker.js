@@ -24,6 +24,18 @@
      3. Fallback to fetch with keepalive when sendBeacon not available
    ============================================================ */
 
+/* ============================================================
+   CentreBlock Tracker for Webflow
+   ------------------------------------------------------------
+   Reads data-cbtrigger and data-cbtags attributes from elements
+   and fires triggers via broker → CentreBlock.
+
+   CRITICAL FIX:
+   sendBeacon with application/json triggers CORS preflight,
+   which fails silently on Render. We send as text/plain (which
+   is a "simple request" - no preflight) and parse JSON on server.
+   ============================================================ */
+
 (function () {
   "use strict";
 
@@ -48,7 +60,7 @@
   let tokenPromise = null;
 
   // ============================================================
-  // Get token (fetches once, then caches)
+  // Get token (fetched eagerly on page load)
   // ============================================================
   function getToken() {
     if (consumerToken) return Promise.resolve(consumerToken);
@@ -112,9 +124,6 @@
     return result;
   }
 
-  // ============================================================
-  // Get UTM tags from URL
-  // ============================================================
   function getUtmTags() {
     const p = new URLSearchParams(location.search);
     const tags = {};
@@ -131,15 +140,13 @@
   }
 
   // ============================================================
-  // Fire a trigger - uses sendBeacon for navigation-safe delivery
+  // Fire a trigger - uses sendBeacon with text/plain to avoid CORS preflight
   // ============================================================
   function fireTrigger(variableName, tags) {
     tags = tags || {};
 
     if (!consumerToken) {
-      // Token not ready yet - try to send anyway, but log warning
-      log("⚠ firing trigger without token (will retry)", variableName);
-      // Try to get token, then fire
+      log("⚠ no token yet, fetching first", variableName);
       getToken()
         .then(() => sendTrigger(variableName, tags))
         .catch((err) => log("trigger " + variableName + " failed", err));
@@ -152,35 +159,38 @@
   function sendTrigger(variableName, tags) {
     const url =
       CONFIG.brokerUrl + "/trigger/" + encodeURIComponent(variableName);
-    const body = JSON.stringify({ tags: tags });
 
-    // Strategy 1: sendBeacon (survives page navigation, fire-and-forget)
-    // sendBeacon doesn't allow custom headers, so we put token in URL as query param
-    // and broker will support both (header OR query param)
+    // Pack everything into the body (token + tags) as JSON-string-in-text
+    // We send as text/plain Content-Type to avoid CORS preflight
+    const payload = JSON.stringify({
+      token: consumerToken,
+      tags: tags,
+    });
+
+    // ----- Strategy 1: sendBeacon with text/plain (no preflight, survives navigation) -----
     if (navigator.sendBeacon) {
-      const urlWithToken = url + "?token=" + encodeURIComponent(consumerToken);
-      const blob = new Blob([body], { type: "application/json" });
-      const ok = navigator.sendBeacon(urlWithToken, blob);
+      // Blob with text/plain MIME type → simple request → no preflight
+      const blob = new Blob([payload], { type: "text/plain" });
+      const ok = navigator.sendBeacon(url, blob);
       if (ok) {
-        log("trigger " + variableName + " → sendBeacon ✓", tags);
+        log("trigger " + variableName + " → sendBeacon queued ✓", tags);
         return;
       }
       log("sendBeacon returned false, falling back to fetch", variableName);
     }
 
-    // Strategy 2: fetch with keepalive (survives page navigation in modern browsers)
+    // ----- Strategy 2: fetch with keepalive (fallback) -----
     fetch(url, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        "x-cb-token": consumerToken,
+        "Content-Type": "text/plain",
         "ngrok-skip-browser-warning": "true",
       },
-      body: body,
+      body: payload,
       keepalive: true,
     })
       .then((res) => {
-        log("trigger " + variableName + " → " + res.status, tags);
+        log("trigger " + variableName + " → fetch " + res.status, tags);
       })
       .catch((err) => {
         log("trigger " + variableName + " failed", err);
@@ -218,7 +228,7 @@
   }
 
   // ============================================================
-  // CLICK tracking — only fires on elements with data-cbtrigger
+  // CLICK tracking
   // ============================================================
   function attachClickTracking() {
     document.addEventListener(
@@ -251,7 +261,7 @@
   }
 
   // ============================================================
-  // Boot - fetch token EAGERLY before any click happens
+  // Boot
   // ============================================================
   function boot() {
     if (CONFIG.siteId === "REPLACE_WITH_SITE_ID") {
@@ -259,17 +269,10 @@
       return;
     }
 
-    // STEP 1: Get token immediately on page load
-    // This way it's ready by the time user clicks
-    getToken().catch(() => {
-      // Token fetch failed, but we still attach click listeners
-      // (clicks will retry token fetch)
-    });
+    // Eager token fetch
+    getToken().catch(() => {});
 
-    // STEP 2: Fire page trigger if body/html has data-cbtrigger
     firePageTrigger();
-
-    // STEP 3: Attach click listeners
     attachClickTracking();
   }
 

@@ -1,13 +1,5 @@
 // ============================================================
 // CentreBlock Broker
-// ------------------------------------------------------------
-// Jobs:
-//   1. Store customer secrets encrypted, keyed by site_id
-//   2. Mint consumer_tokens by calling CentreBlock /consumer
-//   3. Forward trigger events to CentreBlock /trigger
-//   4. Create / check / list CentreBlock variables
-//
-// Visitor browser NEVER sees the customer secret.
 // ============================================================
 
 import express from "express";
@@ -61,28 +53,23 @@ function decrypt(stored) {
   );
 }
 
-// Sanitize tags - CentreBlock only allows alphanumeric in keys and values
 function sanitizeTag(val) {
   return String(val).replace(/[^a-zA-Z0-9]/g, "");
 }
 
-// Sanitize variable name - CB requires lowercase letters and underscores only,
-// must start with a letter, and CB rejects names over ~60 chars
 function sanitizeVariableName(name) {
   let clean = String(name).toLowerCase().replace(/ /g, "_");
-  clean = clean.replace(/[^a-z_]/g, "_"); // only a-z and _
+  clean = clean.replace(/[^a-z_]/g, "_");
   clean = clean.replace(/_+/g, "_").replace(/^_|_$/g, "");
   if (!clean || !/^[a-z]/.test(clean)) {
     clean = "cb_" + clean;
   }
-  // Cap length to avoid CB validation errors (CB limit ~60, we use 50 for safety)
   if (clean.length > 50) {
     clean = clean.slice(0, 50).replace(/_$/, "");
   }
   return clean;
 }
 
-// Extract real visitor IP (works through ngrok / cloudflare / direct)
 function getClientIp(req) {
   let ip =
     req.ip || (req.connection && req.connection.remoteAddress) || "unknown";
@@ -129,7 +116,12 @@ const db = {
 // ----------- express setup -----------
 const app = express();
 app.set("trust proxy", true);
+
+// Parse JSON bodies (for /register, /token, /variable)
 app.use(express.json());
+
+// ALSO parse text/plain bodies (for /trigger from sendBeacon)
+app.use(express.text({ type: "text/plain", limit: "100kb" }));
 
 app.use(
   cors({
@@ -157,7 +149,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Serve tracker.js from the tracker/ folder
+// Serve tracker.js
 app.get("/tracker.js", (req, res) => {
   const trackerPath = path.join(__dirname, "..", "tracker", "tracker.js");
   log(`tracker.js request → looking for: ${trackerPath}`);
@@ -186,8 +178,6 @@ app.get("/health", (req, res) => {
 
 // ============================================================
 // ROUTE 2: Register a site
-// POST /register
-// Body: { site_id, secret, customer_id, domain, default_audience, debug }
 // ============================================================
 app.post("/register", (req, res) => {
   const {
@@ -227,7 +217,6 @@ app.post("/register", (req, res) => {
 
 // ============================================================
 // ROUTE 3: Mint a consumer token
-// POST /token  Body: { site_id, audiences, tags, token_ttl }
 // ============================================================
 app.post("/token", async (req, res) => {
   const { site_id, audiences, tags, token_ttl } = req.body;
@@ -297,20 +286,35 @@ app.post("/token", async (req, res) => {
 
 // ============================================================
 // ROUTE 4: Forward a trigger
-// POST /trigger/:variableName
-// Headers: x-cb-token: <consumer_token>
-// Body: { tags: {...} }
+// ------------------------------------------------------------
+// Body can come in 2 forms:
+//   A) JSON (Content-Type: application/json) — from fetch
+//      { "tags": {...} }   + header x-cb-token
+//   B) Text (Content-Type: text/plain) — from sendBeacon (CORS-safe)
+//      "{ \"token\": \"...\", \"tags\": {...} }"
 // ============================================================
 app.post("/trigger/:variableName", async (req, res) => {
   const { variableName } = req.params;
-  // Accept token from EITHER header (normal fetch) OR query param (sendBeacon)
-  const token = req.headers["x-cb-token"] || req.query.token;
-  const body = req.body || {};
+  let token = req.headers["x-cb-token"] || req.query.token;
+  let body = req.body || {};
 
-  if (!token)
-    return res
-      .status(400)
-      .json({ error: "x-cb-token header or ?token= required" });
+  // If body is a string (text/plain from sendBeacon), parse it
+  if (typeof body === "string") {
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed.token) token = parsed.token;
+      body = { tags: parsed.tags || {} };
+    } catch (e) {
+      log("✗ failed to parse text body:", e.message);
+      return res.status(400).json({ error: "invalid JSON in text body" });
+    }
+  }
+
+  if (!token) {
+    return res.status(400).json({
+      error: "token required (header x-cb-token, ?token=, or body.token)",
+    });
+  }
 
   try {
     const cbRes = await fetch(`${CB_API}trigger/${variableName}`, {
@@ -332,15 +336,14 @@ app.post("/trigger/:variableName", async (req, res) => {
 });
 
 // ============================================================
-// ROUTE 5: List sites (admin/debug)
+// ROUTE 5: List sites
 // ============================================================
 app.get("/sites", (req, res) => {
   res.json(db.listSites());
 });
 
 // ============================================================
-// ROUTE 6: Check if a variable already exists in CentreBlock
-// GET /variable/exists/:site_id/:variableName
+// ROUTE 6: Variable exists check
 // ============================================================
 app.get("/variable/exists/:site_id/:variableName", async (req, res) => {
   const { site_id, variableName } = req.params;
@@ -352,17 +355,13 @@ app.get("/variable/exists/:site_id/:variableName", async (req, res) => {
     const secret = decrypt(row.encrypted_secret);
     const cleanName = sanitizeVariableName(variableName);
 
-    // GET /csv/<customer_id> returns CSV of all variables
     const cbRes = await fetch(`${CB_API}csv/${row.customer_id}`, {
       method: "GET",
-      headers: {
-        "x-centreblock-token": secret,
-      },
+      headers: { "x-centreblock-token": secret },
     });
 
     if (!cbRes.ok) {
       const errText = await cbRes.text();
-      log(`✗ csv fetch failed: ${cbRes.status} ${errText.slice(0, 200)}`);
       return res.status(cbRes.status).json({
         error: "CentreBlock csv fetch failed",
         detail: errText,
@@ -375,7 +374,6 @@ app.get("/variable/exists/:site_id/:variableName", async (req, res) => {
       .map((l) => l.trim())
       .filter(Boolean);
 
-    // Skip header (first line), check first column (variable name)
     const exists = lines
       .slice(1)
       .some((line) => line.split(",")[0].trim().toLowerCase() === cleanName);
@@ -389,25 +387,7 @@ app.get("/variable/exists/:site_id/:variableName", async (req, res) => {
 });
 
 // ============================================================
-// ROUTE 7: Create a CentreBlock variable
-// POST /variable
-// Body: {
-//   site_id,                 // required
-//   name,                    // required, e.g. "signup_button"
-//   weight_for_customer,     // default 15
-//   weight_for_default,      // default 15
-//   label,                   // human readable label (becomes tags.label in CB)
-//   leaving_link,            // optional outbound URL
-//   skip_if_exists           // default true
-// }
-//
-// Final payload sent to CentreBlock (matches Python exactly):
-//   {
-//     "name":       "<cleanName>",
-//     "categories": { "customer": N, "default": N },
-//     "tags":       { "label": "<sanitized>" }   // empty {} if no label
-//     "leavingLink":"<url>"                       // only if provided
-//   }
+// ROUTE 7: Create variable
 // ============================================================
 app.post("/variable", async (req, res) => {
   const {
@@ -433,7 +413,6 @@ app.post("/variable", async (req, res) => {
   try {
     const secret = decrypt(row.encrypted_secret);
 
-    // STEP 1: Check if already exists (optional)
     if (skip_if_exists) {
       try {
         const csvRes = await fetch(`${CB_API}csv/${row.customer_id}`, {
@@ -459,15 +438,12 @@ app.post("/variable", async (req, res) => {
               message: "Variable already exists",
             });
           }
-        } else {
-          log(`csv check returned ${csvRes.status} — proceeding to create`);
         }
       } catch (e) {
         log(`csv check failed: ${e.message} — proceeding to create`);
       }
     }
 
-    // STEP 2: Build the payload (exact same shape as Python)
     const variableTags = {};
     if (label) variableTags.label = sanitizeTag(label);
 
@@ -480,14 +456,12 @@ app.post("/variable", async (req, res) => {
       tags: variableTags,
     };
 
-    // leavingLink — top level, full URL allowed
     if (leaving_link) {
       payload.leavingLink = leaving_link;
     }
 
     log(`→ CB /variables payload`, payload);
 
-    // STEP 3: Create the variable
     const cbRes = await fetch(`${CB_API}variables/`, {
       method: "POST",
       headers: {
@@ -519,9 +493,7 @@ app.post("/variable", async (req, res) => {
 });
 
 // ============================================================
-// ROUTE 8: List all variables for a site (proxies CB /csv/:customer_id)
-// GET /variables/:site_id
-// Returns: { variables: [{ name, ... }] }
+// ROUTE 8: List variables for a site
 // ============================================================
 app.get("/variables/:site_id", async (req, res) => {
   const { site_id } = req.params;
