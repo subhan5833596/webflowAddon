@@ -1,5 +1,5 @@
 // ============================================================
-// CentreBlock Broker
+// CentreBlock Broker (v8)
 // ============================================================
 
 import express from "express";
@@ -108,6 +108,7 @@ const db = {
       domain: s.domain,
       default_audience: s.default_audience,
       debug: s.debug,
+      environment: s.environment,
       created_at: s.created_at,
     }));
   },
@@ -116,22 +117,14 @@ const db = {
 // ----------- express setup -----------
 const app = express();
 app.set("trust proxy", true);
-
-// Parse JSON bodies (for /register, /token, /variable)
 app.use(express.json());
-
-// ALSO parse text/plain bodies (for /trigger from sendBeacon)
 app.use(express.text({ type: "text/plain", limit: "100kb" }));
 
 app.use(
   cors({
     origin: true,
     credentials: false,
-    allowedHeaders: [
-      "Content-Type",
-      "x-cb-token",
-      "ngrok-skip-browser-warning",
-    ],
+    allowedHeaders: ["Content-Type", "x-cb-token", "ngrok-skip-browser-warning"],
     methods: ["GET", "POST", "OPTIONS"],
   }),
 );
@@ -152,19 +145,9 @@ app.use((req, res, next) => {
 // Serve tracker.js
 app.get("/tracker.js", (req, res) => {
   const trackerPath = path.join(__dirname, "..", "tracker", "tracker.js");
-  log(`tracker.js request → looking for: ${trackerPath}`);
-
   if (!fs.existsSync(trackerPath)) {
-    log(`✗ tracker.js NOT FOUND at ${trackerPath}`);
-    return res
-      .status(404)
-      .type("text/plain")
-      .send("// tracker.js not found at: " + trackerPath);
+    return res.status(404).type("text/plain").send("// tracker.js not found");
   }
-
-  const stats = fs.statSync(trackerPath);
-  log(`✓ tracker.js found, size: ${stats.size} bytes`);
-
   res.type("application/javascript");
   res.sendFile(trackerPath);
 });
@@ -177,7 +160,7 @@ app.get("/health", (req, res) => {
 });
 
 // ============================================================
-// ROUTE 2: Register a site
+// ROUTE 2: Register a site (now accepts environment)
 // ============================================================
 app.post("/register", (req, res) => {
   const {
@@ -187,6 +170,7 @@ app.post("/register", (req, res) => {
     domain,
     default_audience = "default",
     debug = false,
+    environment = "prod",
   } = req.body;
 
   if (!site_id || !secret || !customer_id) {
@@ -203,11 +187,10 @@ app.post("/register", (req, res) => {
       domain: domain || "",
       default_audience,
       debug: !!debug,
+      environment: environment || "prod",
       created_at: new Date().toISOString(),
     });
-    log(
-      `✓ registered site: ${site_id} (customer: ${customer_id}, domain: ${domain})`,
-    );
+    log(`✓ registered site: ${site_id} (customer: ${customer_id}, env: ${environment})`);
     res.json({ ok: true, site_id });
   } catch (err) {
     log("✗ register failed:", err.message);
@@ -285,35 +268,25 @@ app.post("/token", async (req, res) => {
 });
 
 // ============================================================
-// ROUTE 4: Forward a trigger
-// ------------------------------------------------------------
-// Body can come in 2 forms:
-//   A) JSON (Content-Type: application/json) — from fetch
-//      { "tags": {...} }   + header x-cb-token
-//   B) Text (Content-Type: text/plain) — from sendBeacon (CORS-safe)
-//      "{ \"token\": \"...\", \"tags\": {...} }"
+// ROUTE 4: Forward a trigger (text/plain CORS-safe)
 // ============================================================
 app.post("/trigger/:variableName", async (req, res) => {
   const { variableName } = req.params;
   let token = req.headers["x-cb-token"] || req.query.token;
   let body = req.body || {};
 
-  // If body is a string (text/plain from sendBeacon), parse it
   if (typeof body === "string") {
     try {
       const parsed = JSON.parse(body);
       if (parsed.token) token = parsed.token;
       body = { tags: parsed.tags || {} };
     } catch (e) {
-      log("✗ failed to parse text body:", e.message);
       return res.status(400).json({ error: "invalid JSON in text body" });
     }
   }
 
   if (!token) {
-    return res.status(400).json({
-      error: "token required (header x-cb-token, ?token=, or body.token)",
-    });
+    return res.status(400).json({ error: "token required" });
   }
 
   try {
@@ -347,7 +320,6 @@ app.get("/sites", (req, res) => {
 // ============================================================
 app.get("/variable/exists/:site_id/:variableName", async (req, res) => {
   const { site_id, variableName } = req.params;
-
   const row = db.getSite(site_id);
   if (!row) return res.status(404).json({ error: "site_id not registered" });
 
@@ -362,10 +334,9 @@ app.get("/variable/exists/:site_id/:variableName", async (req, res) => {
 
     if (!cbRes.ok) {
       const errText = await cbRes.text();
-      return res.status(cbRes.status).json({
-        error: "CentreBlock csv fetch failed",
-        detail: errText,
-      });
+      return res
+        .status(cbRes.status)
+        .json({ error: "CentreBlock csv fetch failed", detail: errText });
     }
 
     const csvText = await cbRes.text();
@@ -378,23 +349,21 @@ app.get("/variable/exists/:site_id/:variableName", async (req, res) => {
       .slice(1)
       .some((line) => line.split(",")[0].trim().toLowerCase() === cleanName);
 
-    log(`variable.exists(${cleanName}) → ${exists}`);
     res.json({ exists, name: cleanName });
   } catch (err) {
-    log("✗ variable.exists failed:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
 // ============================================================
-// ROUTE 7: Create variable
+// ROUTE 7: Create variable (create-missing-only by default)
 // ============================================================
 app.post("/variable", async (req, res) => {
   const {
     site_id,
     name,
-    weight_for_customer = 15,
-    weight_for_default = 15,
+    weight_for_customer = 50,
+    weight_for_default = 50,
     label = "",
     leaving_link = "",
     skip_if_exists = true,
@@ -431,11 +400,11 @@ app.post("/variable", async (req, res) => {
               (line) => line.split(",")[0].trim().toLowerCase() === cleanName,
             );
           if (exists) {
-            log(`✓ variable "${cleanName}" already exists — skipping`);
+            log(`✓ variable "${cleanName}" already exists — skipping (protect historical data)`);
             return res.json({
               skipped: true,
               name: cleanName,
-              message: "Variable already exists",
+              message: "Variable already exists — preserved",
             });
           }
         }
@@ -487,7 +456,6 @@ app.post("/variable", async (req, res) => {
       cb_response: data,
     });
   } catch (err) {
-    log("✗ variable create failed:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -497,7 +465,6 @@ app.post("/variable", async (req, res) => {
 // ============================================================
 app.get("/variables/:site_id", async (req, res) => {
   const { site_id } = req.params;
-
   const row = db.getSite(site_id);
   if (!row) return res.status(404).json({ error: "site_id not registered" });
 
@@ -534,19 +501,134 @@ app.get("/variables/:site_id", async (req, res) => {
       return obj;
     });
 
-    log(`✓ listed ${variables.length} variables for site ${site_id}`);
     res.json({ variables });
   } catch (err) {
-    log("✗ variables list failed:", err.message);
     res.status(500).json({ error: err.message });
   }
+});
+
+// ============================================================
+// ROUTE 9: Validate Integration (NEW - per client requirement #10)
+//
+// Runs a 3-step health check:
+//   1. Broker is reachable
+//   2. Site is registered + secret decryptable
+//   3. Consumer token can be minted from CentreBlock
+//   4. Test trigger fires successfully (debug endpoint /trigger/test/{name})
+// ============================================================
+app.post("/validate/:site_id", async (req, res) => {
+  const { site_id } = req.params;
+  const results = {
+    broker_ok: true,
+    site_registered: false,
+    secret_decryptable: false,
+    consumer_token_minted: false,
+    test_trigger_fired: false,
+    consumer_token: null,
+    errors: [],
+  };
+
+  // Step 1: Site registered?
+  const row = db.getSite(site_id);
+  if (!row) {
+    results.errors.push("Site not registered — go to Settings → Save");
+    return res.json(results);
+  }
+  results.site_registered = true;
+
+  // Step 2: Secret decryptable?
+  let secret;
+  try {
+    secret = decrypt(row.encrypted_secret);
+    results.secret_decryptable = true;
+  } catch (e) {
+    results.errors.push("Secret decryption failed — re-save Settings: " + e.message);
+    return res.json(results);
+  }
+
+  // Step 3: Mint consumer token from CentreBlock
+  let consumerToken;
+  try {
+    const cbRes = await fetch(`${CB_API}consumer`, {
+      method: "POST",
+      headers: {
+        "x-centreblock-token": secret,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        uuid: "validate-test-" + Date.now(),
+        customerId: row.customer_id,
+        createdAt: new Date().toISOString(),
+        audiences: [row.default_audience || "default"],
+        tokenTimeToLive: 1,
+        tags: { source: "validation" },
+      }),
+    });
+
+    const data = await cbRes.json().catch(() => ({}));
+    if (!cbRes.ok) {
+      results.errors.push(
+        "CentreBlock rejected consumer call (" + cbRes.status + "): " +
+        JSON.stringify(data).slice(0, 200)
+      );
+      return res.json(results);
+    }
+    consumerToken = data.data;
+    results.consumer_token_minted = true;
+    results.consumer_token = consumerToken
+      ? consumerToken.slice(0, 16) + "..."
+      : null;
+  } catch (err) {
+    results.errors.push("Consumer call failed: " + err.message);
+    return res.json(results);
+  }
+
+  // Step 4: Fire a test trigger via /trigger/test/{name} (debug endpoint, no real event)
+  try {
+    const testVarName = "validation_test";
+    const cbRes = await fetch(`${CB_API}trigger/test/${testVarName}`, {
+      method: "POST",
+      headers: {
+        "x-centreblock-consumer-token": consumerToken,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        tags: {
+          page: "validation",
+          direction: "Neutral",
+          source: "validate-endpoint",
+        },
+      }),
+    });
+
+    if (cbRes.status === 201 || cbRes.status === 200) {
+      results.test_trigger_fired = true;
+    } else {
+      const text = await cbRes.text().catch(() => "");
+      results.errors.push(
+        "Test trigger returned " + cbRes.status + ": " + text.slice(0, 150)
+      );
+    }
+  } catch (err) {
+    results.errors.push("Test trigger failed: " + err.message);
+  }
+
+  results.success =
+    results.broker_ok &&
+    results.site_registered &&
+    results.secret_decryptable &&
+    results.consumer_token_minted &&
+    results.test_trigger_fired;
+
+  log(`validation for ${site_id}: success=${results.success}`);
+  res.json(results);
 });
 
 // ============================================================
 app.listen(PORT, () => {
   console.log(`
 ╔══════════════════════════════════════════════╗
-║  CentreBlock Broker running on port ${PORT}     ║
+║  CentreBlock Broker (v8) on port ${PORT}        ║
 ║  Debug:    ${DEBUG ? "ON " : "OFF"}                                ║
 ║  CB API:   ${CB_API.padEnd(34)}║
 ╚══════════════════════════════════════════════╝

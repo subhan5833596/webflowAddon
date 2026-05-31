@@ -1,176 +1,230 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>CentreBlock</title>
-    <link href="./styles.css" rel="stylesheet" />
-  </head>
-  <body>
-    <h1><span class="dot"></span> CentreBlock</h1>
+<head>
+<meta charset="UTF-8" />
+<title>CentreBlock</title>
+<link href="./styles.css" rel="stylesheet" />
+</head>
+<body>
 
-    <!-- TABS -->
-    <div class="tabs">
-      <button class="tab active" data-tab="settings">Settings</button>
-      <button class="tab" data-tab="variables">Variables</button>
+<h1><span class="dot"></span> CentreBlock</h1>
+
+<!-- TABS -->
+<div class="tabs">
+  <button class="tab active" data-tab="settings">Settings</button>
+  <button class="tab" data-tab="variables">Variables</button>
+</div>
+
+<!-- ====================== TAB 1: SETTINGS ====================== -->
+<div class="tab-panel active" id="tab-settings">
+
+  <div class="subtitle">Configure tracking for this site</div>
+
+  <div class="field">
+    <label>Broker URL</label>
+    <input type="url" id="brokerUrl" placeholder="https://webflowaddon.onrender.com" />
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label>CentreBlock Customer ID</label>
+      <input type="text" id="customerId" placeholder="e.g. 117" />
+    </div>
+    <div class="field">
+      <label>Environment</label>
+      <select id="environment">
+        <option value="prod">prod</option>
+        <option value="test">test</option>
+        <option value="staging">staging</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>CentreBlock Secret</label>
+    <input type="password" id="secret" placeholder="paste secret from CentreBlock dashboard" />
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label>Default Audience</label>
+      <select id="audience">
+        <option value="default">default</option>
+        <option value="customer">customer</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Debug</label>
+      <select id="debug">
+        <option value="false">Off</option>
+        <option value="true">On</option>
+      </select>
+    </div>
+  </div>
+
+  <button id="saveBtn">Save &amp; Generate Snippet</button>
+  <button id="testBtn" class="secondary">Test Broker Connection</button>
+  <button id="validateBtn" class="secondary">🔍 Validate Integration</button>
+
+  <div id="status" class="status"></div>
+
+  <!-- Validation results -->
+  <div id="validateResults" class="validate-results" style="display:none;">
+    <div class="section-title">Validation Results</div>
+    <div id="validateList"></div>
+  </div>
+
+  <div id="snippetBox" style="display:none; margin-top:16px;">
+    <label>Snippet (paste in Webflow Site Settings → Custom Code → Footer)</label>
+    <textarea id="snippet" rows="10" readonly></textarea>
+    <button id="copyBtn" class="secondary">Copy Snippet</button>
+  </div>
+
+  <div class="hr"></div>
+
+  <div class="section-title">Site Info</div>
+  <div id="siteInfo">Loading…</div>
+
+  <div class="footer">
+    Secret is sent to your broker once and stored encrypted. Token is cached in a scoped cookie (cb_token_&lt;env&gt;_&lt;customerId&gt;) for 10 days. Secure flag added on HTTPS.
+  </div>
+
+</div>
+
+<!-- ====================== TAB 2: VARIABLES ====================== -->
+<div class="tab-panel" id="tab-variables">
+
+  <div class="subtitle">Manage CentreBlock variables for this site.</div>
+
+  <!-- Mode toggle -->
+  <div class="mode-toggle">
+    <button class="mode-btn active" data-mode="create">🆕 Create</button>
+    <button class="mode-btn" data-mode="attach">🔗 Attach</button>
+    <button class="mode-btn" data-mode="scan">🔎 Scan</button>
+  </div>
+
+  <!-- ========== CREATE MODE ========== -->
+  <div id="createMode">
+
+    <div id="selectionBox" class="selection-box empty">
+      <div class="sel-label">No element selected</div>
+      <div class="sel-hint">Click an element on the canvas — like a button or link.</div>
     </div>
 
-    <!-- ====================== TAB 1: SETTINGS (unchanged) ====================== -->
-    <div class="tab-panel active" id="tab-settings">
-      <div class="subtitle">Configure tracking for this site</div>
+    <div id="createForm" style="display:none;">
 
       <div class="field">
-        <label>Broker URL</label>
-        <input
-          type="url"
-          id="brokerUrl"
-          placeholder="https://broker.yourdomain.com"
-        />
+        <label>Variable Name</label>
+        <input type="text" id="varName" placeholder="e.g. home_get_started" />
       </div>
 
       <div class="field">
-        <label>CentreBlock Customer ID</label>
-        <input type="text" id="customerId" placeholder="e.g. 117" />
-      </div>
-
-      <div class="field">
-        <label>CentreBlock Secret</label>
-        <input
-          type="password"
-          id="secret"
-          placeholder="paste secret from CentreBlock dashboard"
-        />
+        <label>Label <span class="hint">(human readable)</span></label>
+        <input type="text" id="varLabel" placeholder="e.g. Get Started Button" />
       </div>
 
       <div class="row">
         <div class="field">
-          <label>Default Audience</label>
-          <select id="audience">
-            <option value="default">default</option>
-            <option value="customer">customer</option>
-          </select>
+          <label>Weight (customer)</label>
+          <input type="number" id="weightCustomer" value="50" min="0" max="100" />
         </div>
         <div class="field">
-          <label>Debug</label>
-          <select id="debug">
-            <option value="false">Off</option>
-            <option value="true">On</option>
-          </select>
+          <label>Weight (default)</label>
+          <input type="number" id="weightDefault" value="50" min="0" max="100" />
         </div>
       </div>
 
-      <button id="saveBtn">Save &amp; Generate Snippet</button>
-      <button id="testBtn" class="secondary">Test Broker Connection</button>
-
-      <div id="status" class="status"></div>
-
-      <div id="snippetBox" style="display: none; margin-top: 16px">
-        <label
-          >Snippet (paste in Webflow Site Settings → Custom Code →
-          Footer)</label
-        >
-        <textarea id="snippet" rows="8" readonly></textarea>
-        <button id="copyBtn" class="secondary">Copy Snippet</button>
+      <div class="field">
+        <label>Direction</label>
+        <select id="varDirection">
+          <option value="Positive">Positive</option>
+          <option value="Neutral">Neutral</option>
+          <option value="Negative">Negative</option>
+        </select>
       </div>
+
+      <div class="field">
+        <label>Leaving Link <span class="hint">(if outbound, optional)</span></label>
+        <input type="url" id="leavingLink" placeholder="https://..." />
+      </div>
+
+      <button id="createVarBtn">Create Variable &amp; Attach</button>
 
       <div class="hr"></div>
+      <div class="section-title">Current Element</div>
+      <div id="existingTriggers" class="existing">none</div>
+      <button id="refreshSelBtn" class="secondary">↻ Refresh Selection</button>
+      <button id="removeAttrBtn" class="danger" style="display:none;">🗑 Remove CB attributes</button>
+    </div>
+  </div>
 
-      <div class="section-title">Site Info</div>
-      <div id="siteInfo">Loading…</div>
+  <!-- ========== ATTACH MODE ========== -->
+  <div id="attachMode" style="display:none;">
 
-      <div class="footer">
-        Secret is sent to your broker once and stored encrypted. It never enters
-        the published site.
-      </div>
+    <div id="selectionBoxAttach" class="selection-box empty">
+      <div class="sel-label">No element selected</div>
+      <div class="sel-hint">Click an element first.</div>
     </div>
 
-    <!-- ====================== TAB 2: VARIABLES (new) ====================== -->
-    <div class="tab-panel" id="tab-variables">
-      <div class="subtitle">
-        Click an element on the canvas, then create a CentreBlock variable for
-        it.
-      </div>
-
-      <div id="selectionBox" class="selection-box empty">
-        <div class="sel-label">No element selected</div>
-        <div class="sel-hint">
-          Click an element on the canvas — like a button or link.
-        </div>
-      </div>
-
-      <div id="varForm" style="display: none">
-        <div class="field">
-          <label
-            >Variable Name <span class="hint">(auto from element)</span></label
-          >
-          <input
-            type="text"
-            id="varName"
-            placeholder="e.g. home_get_started_button"
-          />
-        </div>
-
-        <div class="field">
-          <label>Label <span class="hint">(human readable)</span></label>
-          <input type="text" id="varLabel" placeholder="e.g. Get Started" />
-        </div>
-
-        <div class="row">
-          <div class="field">
-            <label>Weight (customer)</label>
-            <input
-              type="number"
-              id="weightCustomer"
-              value="15"
-              min="0"
-              max="100"
-            />
-          </div>
-          <div class="field">
-            <label>Weight (default)</label>
-            <input
-              type="number"
-              id="weightDefault"
-              value="15"
-              min="0"
-              max="100"
-            />
-          </div>
-        </div>
-
-        <div class="field">
-          <label>Direction</label>
-          <select id="varDirection">
-            <option value="Positive">Positive</option>
-            <option value="Neutral">Neutral</option>
-            <option value="Negative">Negative</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label
-            >Leaving Link
-            <span class="hint">(if outbound — optional)</span></label
-          >
-          <input type="url" id="leavingLink" placeholder="https://..." />
-        </div>
-
-        <button id="createVarBtn">Create Variable &amp; Attach</button>
-        <button id="refreshSelBtn" class="secondary">Refresh Selection</button>
-
-        <div id="varStatus" class="status"></div>
-
-        <div class="hr"></div>
-
-        <div class="section-title">Existing Variables on This Element</div>
-        <div id="existingTriggers" class="existing">none</div>
-      </div>
-
-      <div class="footer">
-        Variables created here are also registered in your CentreBlock
-        dashboard.
-      </div>
+    <div class="field">
+      <label>Select Existing Variable</label>
+      <select id="existingVarSelect">
+        <option value="">Loading…</option>
+      </select>
+      <button id="reloadVarsBtn" class="link-btn">↻ Reload list</button>
     </div>
 
-    <script src="./index.js" defer></script>
-  </body>
+    <div class="field">
+      <label>Direction</label>
+      <select id="attachDirection">
+        <option value="Positive">Positive</option>
+        <option value="Neutral">Neutral</option>
+        <option value="Negative">Negative</option>
+      </select>
+    </div>
+
+    <button id="attachVarBtn">Attach to Selected Element</button>
+  </div>
+
+  <!-- ========== SCAN MODE (NEW) ========== -->
+  <div id="scanMode" style="display:none;">
+
+    <div class="info-box">
+      Scans the current page for clickable elements and checks which ones already have a CentreBlock trigger attached.
+    </div>
+
+    <button id="scanPageBtn">🔎 Scan This Page</button>
+
+    <div id="scanResults" style="display:none; margin-top:16px;">
+      <div class="scan-summary">
+        <div class="scan-stat">
+          <div class="scan-num" id="statTotal">0</div>
+          <div class="scan-lbl">Total clickable</div>
+        </div>
+        <div class="scan-stat">
+          <div class="scan-num green" id="statTracked">0</div>
+          <div class="scan-lbl">Tracked</div>
+        </div>
+        <div class="scan-stat">
+          <div class="scan-num red" id="statUntracked">0</div>
+          <div class="scan-lbl">Untracked</div>
+        </div>
+      </div>
+
+      <div class="section-title" style="margin-top:16px;">Untracked Elements</div>
+      <div id="untrackedList" class="untracked-list">none</div>
+    </div>
+  </div>
+
+  <!-- Shared status -->
+  <div id="varStatus" class="status"></div>
+
+  <div class="footer">
+    Variables use create-missing-only logic — existing variables and their trigger history are never overwritten.
+  </div>
+
+</div>
+
+<script src="./index.js" defer></script>
+</body>
 </html>

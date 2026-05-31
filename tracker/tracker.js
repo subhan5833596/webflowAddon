@@ -1,56 +1,34 @@
 /* ============================================================
    CentreBlock Tracker for Webflow
    ------------------------------------------------------------
-   Reads data-cbtrigger and data-cbtags attributes from elements
-   (set by the CentreBlock Designer Extension) and fires triggers
-   via the broker → CentreBlock.
-
-   Behavior:
-     1. On load: gets a consumer_token from broker (uses visitor IP)
-     2. Fires a page-level trigger (if page has data-cbtrigger on body)
-     3. Tracks clicks on ANY element that has data-cbtrigger attribute
-     4. Reads data-cbtags for direction, page, custom tags
-   ============================================================ */
-
-/* ============================================================
-   CentreBlock Tracker for Webflow
-   ------------------------------------------------------------
-   Reads data-cbtrigger and data-cbtags attributes from elements
-   and fires triggers via broker → CentreBlock.
-
-   KEY FIXES:
-     1. Token is fetched EAGERLY on page load (not on first click)
-     2. sendBeacon used for trigger fire (survives page navigation)
-     3. Fallback to fetch with keepalive when sendBeacon not available
-   ============================================================ */
-
-/* ============================================================
-   CentreBlock Tracker for Webflow
-   ------------------------------------------------------------
-   Reads data-cbtrigger and data-cbtags attributes from elements
-   and fires triggers via broker → CentreBlock.
-
-   CRITICAL FIX:
-   sendBeacon with application/json triggers CORS preflight,
-   which fails silently on Render. We send as text/plain (which
-   is a "simple request" - no preflight) and parse JSON on server.
+   Implements:
+     - Server-side token broker (secret never in browser)
+     - Cookie-based token caching (10 days)
+     - Scoped cookie name: cb_token_{environment}_{customerId}
+     - Secure attribute on HTTPS sites
+     - sendBeacon for navigation-safe trigger firing
+     - data-cbtrigger / data-cbtags attribute-driven events
    ============================================================ */
 
 (function () {
   "use strict";
 
   const CONFIG = window.__CENTREBLOCK_CONFIG__ || {
-    siteId: "66fbd171291413aa1f7ebcd8",
-    brokerUrl: "https://webflowaddon.onrender.com",
+    siteId: "REPLACE_WITH_SITE_ID",
+    brokerUrl: "REPLACE_WITH_BROKER_URL",
     audience: "default",
     debug: false,
+    customerId: "default",      // for cookie scoping
+    environment: "prod",        // for cookie scoping (prod / test / staging)
   };
+
+  const TOKEN_TTL_DAYS = 10;
 
   const log = function () {
     if (CONFIG.debug)
       console.log.apply(
         console,
-        ["[CB-Tracker]"].concat([].slice.call(arguments)),
+        ["[CB-Tracker]"].concat([].slice.call(arguments))
       );
   };
 
@@ -60,13 +38,67 @@
   let tokenPromise = null;
 
   // ============================================================
-  // Get token (fetched eagerly on page load)
+  // Cookie helpers — scoped name: cb_token_{env}_{customerId}
+  // ============================================================
+  function getCookieName() {
+    const env = (CONFIG.environment || "prod").toString().replace(/[^a-z0-9]/gi, "");
+    const cid = (CONFIG.customerId || "default").toString().replace(/[^a-z0-9]/gi, "");
+    return "cb_token_" + env + "_" + cid;
+  }
+
+  function readCookie(name) {
+    const all = document.cookie || "";
+    const parts = all.split(";");
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i].trim();
+      if (p.indexOf(name + "=") === 0) {
+        try {
+          return decodeURIComponent(p.substring(name.length + 1));
+        } catch {
+          return null;
+        }
+      }
+    }
+    return null;
+  }
+
+  function writeCookie(name, value, days) {
+    const exp = new Date();
+    exp.setTime(exp.getTime() + days * 24 * 60 * 60 * 1000);
+    const isHttps = location.protocol === "https:";
+    let cookie =
+      name +
+      "=" +
+      encodeURIComponent(value) +
+      "; expires=" +
+      exp.toUTCString() +
+      "; path=/; SameSite=Lax";
+    if (isHttps) cookie += "; Secure";
+    document.cookie = cookie;
+    log("cookie set:", name, "(Secure:", isHttps + ")");
+  }
+
+  function deleteCookie(name) {
+    document.cookie = name + "=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
+  }
+
+  // ============================================================
+  // Token management — tries cookie first, falls back to broker
   // ============================================================
   function getToken() {
     if (consumerToken) return Promise.resolve(consumerToken);
     if (tokenPromise) return tokenPromise;
 
-    log("requesting token...");
+    // Try cookie first
+    const cookieName = getCookieName();
+    const cached = readCookie(cookieName);
+    if (cached) {
+      consumerToken = cached;
+      log("✓ token loaded from cookie", cookieName, consumerToken.slice(0, 12) + "...");
+      return Promise.resolve(consumerToken);
+    }
+
+    log("no cached token — requesting from broker...");
 
     tokenPromise = fetch(CONFIG.brokerUrl + "/token", {
       method: "POST",
@@ -79,7 +111,7 @@
         audiences: Array.isArray(CONFIG.audience)
           ? CONFIG.audience
           : [CONFIG.audience || "default"],
-        token_ttl: 10,
+        token_ttl: TOKEN_TTL_DAYS,
       }),
     })
       .then((r) => r.json())
@@ -88,12 +120,9 @@
           throw new Error("No token in response: " + JSON.stringify(data));
         }
         consumerToken = data.token;
-        log(
-          "✓ got token",
-          consumerToken.slice(0, 12) + "...",
-          "uuid:",
-          data.uuid,
-        );
+        // Cache in cookie for 10 days
+        writeCookie(cookieName, consumerToken, TOKEN_TTL_DAYS);
+        log("✓ got fresh token", consumerToken.slice(0, 12) + "...", "uuid:", data.uuid);
         return consumerToken;
       })
       .catch((err) => {
@@ -127,20 +156,14 @@
   function getUtmTags() {
     const p = new URLSearchParams(location.search);
     const tags = {};
-    [
-      "utm_source",
-      "utm_medium",
-      "utm_campaign",
-      "utm_term",
-      "utm_content",
-    ].forEach((k) => {
+    ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"].forEach((k) => {
       if (p.get(k)) tags["url_" + k] = p.get(k);
     });
     return tags;
   }
 
   // ============================================================
-  // Fire a trigger - uses sendBeacon with text/plain to avoid CORS preflight
+  // Fire trigger — sendBeacon with text/plain (CORS-safe)
   // ============================================================
   function fireTrigger(variableName, tags) {
     tags = tags || {};
@@ -157,29 +180,24 @@
   }
 
   function sendTrigger(variableName, tags) {
-    const url =
-      CONFIG.brokerUrl + "/trigger/" + encodeURIComponent(variableName);
-
-    // Pack everything into the body (token + tags) as JSON-string-in-text
-    // We send as text/plain Content-Type to avoid CORS preflight
+    const url = CONFIG.brokerUrl + "/trigger/" + encodeURIComponent(variableName);
     const payload = JSON.stringify({
       token: consumerToken,
       tags: tags,
     });
 
-    // ----- Strategy 1: sendBeacon with text/plain (no preflight, survives navigation) -----
+    // Strategy 1: sendBeacon with text/plain (no preflight, survives navigation)
     if (navigator.sendBeacon) {
-      // Blob with text/plain MIME type → simple request → no preflight
       const blob = new Blob([payload], { type: "text/plain" });
       const ok = navigator.sendBeacon(url, blob);
       if (ok) {
-        log("trigger " + variableName + " → sendBeacon queued ✓", tags);
+        log("trigger " + variableName + " → sendBeacon ✓", tags);
         return;
       }
       log("sendBeacon returned false, falling back to fetch", variableName);
     }
 
-    // ----- Strategy 2: fetch with keepalive (fallback) -----
+    // Strategy 2: fetch with keepalive
     fetch(url, {
       method: "POST",
       headers: {
@@ -191,6 +209,13 @@
     })
       .then((res) => {
         log("trigger " + variableName + " → fetch " + res.status, tags);
+        // If broker says token expired/invalid, clear cookie and retry once
+        if (res.status === 401 || res.status === 403) {
+          log("token rejected, clearing cookie for retry on next event");
+          consumerToken = null;
+          tokenPromise = null;
+          deleteCookie(getCookieName());
+        }
       })
       .catch((err) => {
         log("trigger " + variableName + " failed", err);
@@ -201,9 +226,10 @@
   // PAGE trigger — fires once on load
   // ============================================================
   function firePageTrigger() {
-    const pageEl = document.body.getAttribute("data-cbtrigger")
-      ? document.body
-      : document.documentElement.getAttribute("data-cbtrigger")
+    const pageEl =
+      document.body.getAttribute("data-cbtrigger")
+        ? document.body
+        : document.documentElement.getAttribute("data-cbtrigger")
         ? document.documentElement
         : null;
 
@@ -221,7 +247,7 @@
         direction: cbTags.direction || "Neutral",
       },
       cbTags,
-      getUtmTags(),
+      getUtmTags()
     );
 
     fireTrigger(triggerName, tags);
@@ -250,12 +276,12 @@
             elementText: (target.textContent || "").trim().slice(0, 80),
           },
           cbTags,
-          getUtmTags(),
+          getUtmTags()
         );
 
         fireTrigger(triggerName, tags);
       },
-      true,
+      true
     );
     log("click tracking attached");
   }
@@ -269,7 +295,7 @@
       return;
     }
 
-    // Eager token fetch
+    // Eager token fetch (from cookie or broker)
     getToken().catch(() => {});
 
     firePageTrigger();
@@ -293,5 +319,12 @@
     hasToken: function () {
       return !!consumerToken;
     },
+    clearToken: function () {
+      consumerToken = null;
+      tokenPromise = null;
+      deleteCookie(getCookieName());
+      log("token cleared from memory and cookie");
+    },
+    cookieName: getCookieName,
   };
 })();
