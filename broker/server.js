@@ -491,16 +491,27 @@ app.get("/variables/:site_id", async (req, res) => {
 
     if (lines.length < 2) return res.json({ variables: [] });
 
-    const headers = lines[0].split(",").map((h) => h.trim());
+    // Helper to strip wrapping quotes from CSV values like "value" → value
+    const stripQuotes = (s) => {
+      if (!s) return "";
+      let v = String(s).trim();
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+        v = v.slice(1, -1);
+      }
+      return v.trim();
+    };
+
+    const headers = lines[0].split(",").map((h) => stripQuotes(h));
     const variables = lines.slice(1).map((line) => {
       const cells = line.split(",");
       const obj = {};
       headers.forEach((h, i) => {
-        obj[h] = (cells[i] || "").trim();
+        obj[h] = stripQuotes(cells[i] || "");
       });
       return obj;
     });
 
+    log(`✓ listed ${variables.length} variables for site ${site_id}`);
     res.json({ variables });
   } catch (err) {
     res.status(500).json({ error: err.message });

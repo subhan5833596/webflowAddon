@@ -17,7 +17,11 @@ function showStatus(elId: string, msg: string, ok = true) {
 }
 
 function escapeHtml(s: string) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 // ============================================================
@@ -26,8 +30,12 @@ function escapeHtml(s: string) {
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => {
     const name = (tab as HTMLElement).dataset.tab;
-    document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
-    document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
+    document
+      .querySelectorAll(".tab")
+      .forEach((t) => t.classList.remove("active"));
+    document
+      .querySelectorAll(".tab-panel")
+      .forEach((p) => p.classList.remove("active"));
     tab.classList.add("active");
     $("tab-" + name).classList.add("active");
     if (name === "variables") refreshSelection();
@@ -40,7 +48,9 @@ document.querySelectorAll(".tab").forEach((tab) => {
 document.querySelectorAll(".mode-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
     const mode = (btn as HTMLElement).dataset.mode;
-    document.querySelectorAll(".mode-btn").forEach((b) => b.classList.remove("active"));
+    document
+      .querySelectorAll(".mode-btn")
+      .forEach((b) => b.classList.remove("active"));
     btn.classList.add("active");
     $("createMode").style.display = mode === "create" ? "block" : "none";
     $("attachMode").style.display = mode === "attach" ? "block" : "none";
@@ -60,24 +70,42 @@ async function loadSiteInfo() {
   try {
     const siteInfo = await webflow.getSiteInfo();
     $("siteInfo").innerHTML =
-      "<div><b>Name:</b> " + siteInfo.siteName + "</div>" +
-      "<div><b>Site ID:</b> <code>" + siteInfo.siteId + "</code></div>" +
-      "<div><b>Short name:</b> " + (siteInfo.shortName || "—") + "</div>";
+      "<div><b>Name:</b> " +
+      siteInfo.siteName +
+      "</div>" +
+      "<div><b>Site ID:</b> <code>" +
+      siteInfo.siteId +
+      "</code></div>" +
+      "<div><b>Short name:</b> " +
+      (siteInfo.shortName || "—") +
+      "</div>";
 
-    const saved = JSON.parse(localStorage.getItem("cb_" + siteInfo.siteId) || "{}");
-    if (saved.brokerUrl) ($("brokerUrl") as HTMLInputElement).value = saved.brokerUrl;
-    if (saved.customerId) ($("customerId") as HTMLInputElement).value = saved.customerId;
-    if (saved.environment) ($("environment") as HTMLSelectElement).value = saved.environment;
-    if (saved.audience) ($("audience") as HTMLSelectElement).value = saved.audience;
-    if (saved.debug !== undefined) ($("debug") as HTMLSelectElement).value = String(saved.debug);
+    const saved = JSON.parse(
+      localStorage.getItem("cb_" + siteInfo.siteId) || "{}",
+    );
+    if (saved.brokerUrl)
+      ($("brokerUrl") as HTMLInputElement).value = saved.brokerUrl;
+    if (saved.customerId)
+      ($("customerId") as HTMLInputElement).value = saved.customerId;
+    if (saved.environment)
+      ($("environment") as HTMLSelectElement).value = saved.environment;
+    if (saved.audience)
+      ($("audience") as HTMLSelectElement).value = saved.audience;
+    if (saved.debug !== undefined)
+      ($("debug") as HTMLSelectElement).value = String(saved.debug);
   } catch (err: any) {
     $("siteInfo").textContent = "Error: " + err.message;
   }
 }
 
 $("testBtn").addEventListener("click", async () => {
-  const brokerUrl = ($("brokerUrl") as HTMLInputElement).value.trim().replace(/\/$/, "");
-  if (!brokerUrl) { showStatus("status", "Enter broker URL first", false); return; }
+  const brokerUrl = ($("brokerUrl") as HTMLInputElement).value
+    .trim()
+    .replace(/\/$/, "");
+  if (!brokerUrl) {
+    showStatus("status", "Enter broker URL first", false);
+    return;
+  }
   try {
     const res = await fetch(brokerUrl + "/health", {
       headers: { "ngrok-skip-browser-warning": "true" },
@@ -94,7 +122,9 @@ $("testBtn").addEventListener("click", async () => {
 // VALIDATE INTEGRATION (NEW)
 // ============================================================
 $("validateBtn").addEventListener("click", async () => {
-  const brokerUrl = ($("brokerUrl") as HTMLInputElement).value.trim().replace(/\/$/, "");
+  const brokerUrl = ($("brokerUrl") as HTMLInputElement).value
+    .trim()
+    .replace(/\/$/, "");
   if (!brokerUrl) {
     showStatus("status", "Enter broker URL first", false);
     return;
@@ -130,8 +160,14 @@ $("validateBtn").addEventListener("click", async () => {
       { ok: data.broker_ok, label: "Broker reachable" },
       { ok: data.site_registered, label: "Site registered with broker" },
       { ok: data.secret_decryptable, label: "Customer secret decryptable" },
-      { ok: data.consumer_token_minted, label: "Consumer token mint (CentreBlock /consumer)" },
-      { ok: data.test_trigger_fired, label: "Test trigger fires (CentreBlock /trigger/test/)" },
+      {
+        ok: data.consumer_token_minted,
+        label: "Consumer token mint (CentreBlock /consumer)",
+      },
+      {
+        ok: data.test_trigger_fired,
+        label: "Test trigger fires (CentreBlock /trigger/test/)",
+      },
     ];
 
     let html = "";
@@ -140,7 +176,10 @@ $("validateBtn").addEventListener("click", async () => {
     }
 
     if (data.errors && data.errors.length > 0) {
-      html += '<div class="errors">' + data.errors.map((e: string) => escapeHtml(e)).join("<br>") + "</div>";
+      html +=
+        '<div class="errors">' +
+        data.errors.map((e: string) => escapeHtml(e)).join("<br>") +
+        "</div>";
     }
 
     $("validateList").innerHTML = html;
@@ -151,7 +190,8 @@ $("validateBtn").addEventListener("click", async () => {
       showStatus("status", "Some checks failed — see details below", false);
     }
   } catch (err: any) {
-    $("validateList").innerHTML = `<div class="check fail">Validation request failed</div>
+    $("validateList").innerHTML =
+      `<div class="check fail">Validation request failed</div>
       <div class="errors">${escapeHtml(err.message)}</div>`;
     showStatus("status", "Validation failed: " + err.message, false);
   } finally {
@@ -164,7 +204,9 @@ $("validateBtn").addEventListener("click", async () => {
 // SAVE & GENERATE SNIPPET (now includes environment + customerId in config)
 // ============================================================
 $("saveBtn").addEventListener("click", async () => {
-  const brokerUrl = ($("brokerUrl") as HTMLInputElement).value.trim().replace(/\/$/, "");
+  const brokerUrl = ($("brokerUrl") as HTMLInputElement).value
+    .trim()
+    .replace(/\/$/, "");
   const customerId = ($("customerId") as HTMLInputElement).value.trim();
   const environment = ($("environment") as HTMLSelectElement).value;
   const secret = ($("secret") as HTMLInputElement).value.trim();
@@ -172,7 +214,11 @@ $("saveBtn").addEventListener("click", async () => {
   const debug = ($("debug") as HTMLSelectElement).value === "true";
 
   if (!brokerUrl || !customerId || !secret) {
-    showStatus("status", "Broker URL, Customer ID and Secret are all required", false);
+    showStatus(
+      "status",
+      "Broker URL, Customer ID and Secret are all required",
+      false,
+    );
     return;
   }
 
@@ -184,7 +230,10 @@ $("saveBtn").addEventListener("click", async () => {
 
     const regRes = await fetch(brokerUrl + "/register", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
+      headers: {
+        "Content-Type": "application/json",
+        "ngrok-skip-browser-warning": "true",
+      },
       body: JSON.stringify({
         site_id: siteInfo.siteId,
         secret: secret,
@@ -205,20 +254,45 @@ $("saveBtn").addEventListener("click", async () => {
     const snippet =
       "<script>\n" +
       "window.__CENTREBLOCK_CONFIG__ = {\n" +
-      '  siteId: "' + siteInfo.siteId + '",\n' +
-      '  brokerUrl: "' + brokerUrl + '",\n' +
-      '  customerId: "' + customerId + '",\n' +
-      '  environment: "' + environment + '",\n' +
-      '  audience: "' + audience + '",\n' +
-      "  debug: " + debug + ",\n" +
-      '  webname: "' + (siteInfo.shortName || "site").toLowerCase() + '"\n' +
+      '  siteId: "' +
+      siteInfo.siteId +
+      '",\n' +
+      '  brokerUrl: "' +
+      brokerUrl +
+      '",\n' +
+      '  customerId: "' +
+      customerId +
+      '",\n' +
+      '  environment: "' +
+      environment +
+      '",\n' +
+      '  audience: "' +
+      audience +
+      '",\n' +
+      "  debug: " +
+      debug +
+      ",\n" +
+      '  webname: "' +
+      (siteInfo.shortName || "site").toLowerCase() +
+      '"\n' +
       "};\n" +
-      "</" + "script>\n" +
-      '<script src="' + brokerUrl + '/tracker.js" defer></' + "script>";
+      "</" +
+      "script>\n" +
+      '<script src="' +
+      brokerUrl +
+      '/tracker.js" defer></' +
+      "script>";
 
-    localStorage.setItem("cb_" + siteInfo.siteId, JSON.stringify({
-      brokerUrl, customerId, environment, audience, debug,
-    }));
+    localStorage.setItem(
+      "cb_" + siteInfo.siteId,
+      JSON.stringify({
+        brokerUrl,
+        customerId,
+        environment,
+        audience,
+        debug,
+      }),
+    );
 
     ($("snippet") as HTMLTextAreaElement).value = snippet;
     $("snippetBox").style.display = "block";
@@ -267,7 +341,7 @@ async function readElementText(el: any): Promise<string> {
   try {
     if (typeof el.getChildren === "function") {
       const children = await el.getChildren();
-      for (const child of (children || [])) {
+      for (const child of children || []) {
         const c: any = child;
         if (c && c.type === "String" && typeof c.getText === "function") {
           const t = await c.getText();
@@ -276,7 +350,7 @@ async function readElementText(el: any): Promise<string> {
         if (c && typeof c.getChildren === "function") {
           try {
             const grandkids = await c.getChildren();
-            for (const gk of (grandkids || [])) {
+            for (const gk of grandkids || []) {
               const g: any = gk;
               if (g && g.type === "String" && typeof g.getText === "function") {
                 const t = await g.getText();
@@ -313,9 +387,10 @@ async function buildVariableName(label: string, tag: string): Promise<string> {
     const webname = slugify(siteInfo.shortName || "site", 15);
     const labelSlug = slugify(label || "el", 25);
     const tagSlug = slugify(tag || "el", 12);
-    let name = labelSlug && labelSlug !== "el"
-      ? `${webname}_${labelSlug}`
-      : `${webname}_${labelSlug}_${tagSlug}`;
+    let name =
+      labelSlug && labelSlug !== "el"
+        ? `${webname}_${labelSlug}`
+        : `${webname}_${labelSlug}_${tagSlug}`;
     name = name.replace(/_+/g, "_").replace(/^_|_$/g, "");
     if (name.length > 50) name = name.slice(0, 50).replace(/_$/, "");
     if (!name) name = "cb_var";
@@ -346,7 +421,8 @@ async function refreshSelection() {
     $("selectionBox").className = "selection-box has-selection";
     $("selectionBox").innerHTML =
       '<div class="sel-label">✓ Element selected</div>' +
-      '<div class="sel-meta">Type: ' + elType +
+      '<div class="sel-meta">Type: ' +
+      elType +
       (elText ? '<br>Text: "' + escapeHtml(elText.slice(0, 60)) + '"' : "") +
       "</div>";
     $("createForm").style.display = "block";
@@ -385,7 +461,8 @@ async function refreshSelectionForAttach() {
     $("selectionBoxAttach").className = "selection-box has-selection";
     $("selectionBoxAttach").innerHTML =
       '<div class="sel-label">✓ Element selected</div>' +
-      '<div class="sel-meta">Type: ' + (el.type || "Element") +
+      '<div class="sel-meta">Type: ' +
+      (el.type || "Element") +
       (elText ? '<br>Text: "' + escapeHtml(elText.slice(0, 60)) + '"' : "") +
       "</div>";
   } catch {}
@@ -393,8 +470,14 @@ async function refreshSelectionForAttach() {
 
 async function displayExistingAttrs(el: any) {
   try {
-    const trigger = typeof el.getCustomAttribute === "function" ? await el.getCustomAttribute("data-cbtrigger") : null;
-    const tags = typeof el.getCustomAttribute === "function" ? await el.getCustomAttribute("data-cbtags") : null;
+    const trigger =
+      typeof el.getCustomAttribute === "function"
+        ? await el.getCustomAttribute("data-cbtrigger")
+        : null;
+    const tags =
+      typeof el.getCustomAttribute === "function"
+        ? await el.getCustomAttribute("data-cbtags")
+        : null;
     if (trigger || tags) {
       $("existingTriggers").className = "existing has";
       $("existingTriggers").innerHTML =
@@ -414,12 +497,17 @@ async function displayExistingAttrs(el: any) {
 }
 
 let nameManuallyEdited = false;
-$("varName").addEventListener("input", () => { nameManuallyEdited = true; });
+$("varName").addEventListener("input", () => {
+  nameManuallyEdited = true;
+});
 $("varLabel").addEventListener("input", async () => {
   if (nameManuallyEdited) return;
   const label = ($("varLabel") as HTMLInputElement).value;
   const tag = selectedElement?.type || "el";
-  ($("varName") as HTMLInputElement).value = await buildVariableName(label, tag);
+  ($("varName") as HTMLInputElement).value = await buildVariableName(
+    label,
+    tag,
+  );
 });
 
 $("refreshSelBtn").addEventListener("click", () => {
@@ -443,23 +531,42 @@ try {
 // CREATE VARIABLE
 // ============================================================
 $("createVarBtn").addEventListener("click", async () => {
-  if (!selectedElement) { showStatus("varStatus", "Select an element first", false); return; }
+  if (!selectedElement) {
+    showStatus("varStatus", "Select an element first", false);
+    return;
+  }
 
   const name = ($("varName") as HTMLInputElement).value.trim();
   const label = ($("varLabel") as HTMLInputElement).value.trim();
-  const weightCustomer = Number(($("weightCustomer") as HTMLInputElement).value || 50);
-  const weightDefault = Number(($("weightDefault") as HTMLInputElement).value || 50);
+  const weightCustomer = Number(
+    ($("weightCustomer") as HTMLInputElement).value || 50,
+  );
+  const weightDefault = Number(
+    ($("weightDefault") as HTMLInputElement).value || 50,
+  );
   const direction = ($("varDirection") as HTMLSelectElement).value;
   const leavingLink = ($("leavingLink") as HTMLInputElement).value.trim();
 
-  if (!name) { showStatus("varStatus", "Variable name required", false); return; }
-  if (!label) { showStatus("varStatus", "Label required", false); return; }
+  if (!name) {
+    showStatus("varStatus", "Variable name required", false);
+    return;
+  }
+  if (!label) {
+    showStatus("varStatus", "Label required", false);
+    return;
+  }
 
   const siteInfo = await webflow.getSiteInfo();
-  const saved = JSON.parse(localStorage.getItem("cb_" + siteInfo.siteId) || "{}");
+  const saved = JSON.parse(
+    localStorage.getItem("cb_" + siteInfo.siteId) || "{}",
+  );
   const brokerUrl = saved.brokerUrl;
   if (!brokerUrl) {
-    showStatus("varStatus", "Configure broker URL in Settings tab first", false);
+    showStatus(
+      "varStatus",
+      "Configure broker URL in Settings tab first",
+      false,
+    );
     return;
   }
 
@@ -469,7 +576,10 @@ $("createVarBtn").addEventListener("click", async () => {
   try {
     const resp = await fetch(brokerUrl + "/variable", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
+      headers: {
+        "Content-Type": "application/json",
+        "ngrok-skip-browser-warning": "true",
+      },
       body: JSON.stringify({
         site_id: siteInfo.siteId,
         name: name,
@@ -511,7 +621,9 @@ async function loadExistingVariables() {
 
   try {
     const siteInfo = await webflow.getSiteInfo();
-    const saved = JSON.parse(localStorage.getItem("cb_" + siteInfo.siteId) || "{}");
+    const saved = JSON.parse(
+      localStorage.getItem("cb_" + siteInfo.siteId) || "{}",
+    );
     const brokerUrl = saved.brokerUrl;
     if (!brokerUrl) {
       select.innerHTML = '<option value="">Configure broker URL first</option>';
@@ -524,7 +636,10 @@ async function loadExistingVariables() {
     const data = await resp.json();
 
     if (!resp.ok) {
-      select.innerHTML = '<option value="">Error: ' + (data.error || "fetch failed") + '</option>';
+      select.innerHTML =
+        '<option value="">Error: ' +
+        (data.error || "fetch failed") +
+        "</option>";
       return;
     }
 
@@ -536,30 +651,84 @@ async function loadExistingVariables() {
 
     const seen: { [k: string]: boolean } = {};
     const unique: any[] = [];
+
+    // Helper to strip wrapping quotes
+    const strip = (s: any): string => {
+      if (s === undefined || s === null) return "";
+      let v = String(s).trim();
+      if (
+        (v.startsWith('"') && v.endsWith('"')) ||
+        (v.startsWith("'") && v.endsWith("'"))
+      ) {
+        v = v.slice(1, -1);
+      }
+      return v.trim();
+    };
+
     for (const v of variables) {
-      const n = v.name || v.variableName || v["﻿name"] || "";
+      // Try multiple key variations: "name", '"name"', "variableName", BOM-prefixed
+      let n = strip(
+        v.name ||
+          v["name"] ||
+          v['"name"'] ||
+          v.variableName ||
+          v["﻿name"] ||
+          "",
+      );
+
+      // Fallback: pick the first non-numeric string value if no name found
+      if (!n) {
+        for (const key in v) {
+          const val = strip(v[key]);
+          if (
+            val &&
+            isNaN(Number(val)) &&
+            val.length > 2 &&
+            !val.includes(":")
+          ) {
+            n = val;
+            break;
+          }
+        }
+      }
+
       if (n && !seen[n]) {
         seen[n] = true;
         unique.push({ name: n });
       }
     }
 
-    select.innerHTML = '<option value="">— Select a variable —</option>' +
-      unique.map(v => `<option value="${escapeHtml(v.name)}">${escapeHtml(v.name)}</option>`).join("");
+    // Sort alphabetically for usability
+    unique.sort((a, b) => a.name.localeCompare(b.name));
+
+    select.innerHTML =
+      '<option value="">— Select a variable —</option>' +
+      unique
+        .map(
+          (v) =>
+            `<option value="${escapeHtml(v.name)}">${escapeHtml(v.name)}</option>`,
+        )
+        .join("");
   } catch (err: any) {
-    select.innerHTML = '<option value="">Error: ' + err.message + '</option>';
+    select.innerHTML = '<option value="">Error: ' + err.message + "</option>";
   }
 }
 
 $("reloadVarsBtn").addEventListener("click", loadExistingVariables);
 
 $("attachVarBtn").addEventListener("click", async () => {
-  if (!selectedElement) { showStatus("varStatus", "Select an element first", false); return; }
+  if (!selectedElement) {
+    showStatus("varStatus", "Select an element first", false);
+    return;
+  }
 
   const varName = ($("existingVarSelect") as HTMLSelectElement).value;
   const direction = ($("attachDirection") as HTMLSelectElement).value;
 
-  if (!varName) { showStatus("varStatus", "Select a variable from the list", false); return; }
+  if (!varName) {
+    showStatus("varStatus", "Select a variable from the list", false);
+    return;
+  }
 
   ($("attachVarBtn") as HTMLButtonElement).disabled = true;
   $("attachVarBtn").textContent = "Attaching…";
@@ -605,7 +774,11 @@ $("removeAttrBtn").addEventListener("click", async () => {
   }
 });
 
-async function attachAttributes(varName: string, direction: string, webname: string) {
+async function attachAttributes(
+  varName: string,
+  direction: string,
+  webname: string,
+) {
   if (!selectedElement) throw new Error("No element selected");
   if (typeof selectedElement.setCustomAttribute !== "function") {
     throw new Error("This element type doesn't support custom attributes");
@@ -626,7 +799,12 @@ $("scanPageBtn").addEventListener("click", async () => {
     const root = await webflow.getRootElement();
     if (!root) throw new Error("Could not access page root");
 
-    const findings: { el: any; text: string; type: string; hasTrigger: boolean }[] = [];
+    const findings: {
+      el: any;
+      text: string;
+      type: string;
+      hasTrigger: boolean;
+    }[] = [];
 
     // Recursive walk
     async function walk(el: any, depth = 0) {
@@ -634,14 +812,23 @@ $("scanPageBtn").addEventListener("click", async () => {
       const elType = (el && el.type) || "";
 
       // Identify clickable types
-      const clickableTypes = ["Link", "LinkBlock", "Button", "NavbarLink", "NavbarBrand", "DropdownToggle", "FormSubmitButton", "DOM"];
+      const clickableTypes = [
+        "Link",
+        "LinkBlock",
+        "Button",
+        "NavbarLink",
+        "NavbarBrand",
+        "DropdownToggle",
+        "FormSubmitButton",
+        "DOM",
+      ];
       const isClickable = clickableTypes.indexOf(elType) >= 0;
 
       // For DOM elements check tag
       let isDomClickable = false;
       if (elType === "DOM" && typeof el.getTag === "function") {
         try {
-          const tag = (await el.getTag() || "").toLowerCase();
+          const tag = ((await el.getTag()) || "").toLowerCase();
           if (["a", "button"].indexOf(tag) >= 0) isDomClickable = true;
         } catch {}
       }
@@ -656,7 +843,9 @@ $("scanPageBtn").addEventListener("click", async () => {
         } catch {}
 
         let txt = "";
-        try { txt = await readElementText(el); } catch {}
+        try {
+          txt = await readElementText(el);
+        } catch {}
 
         findings.push({
           el: el,
@@ -670,7 +859,7 @@ $("scanPageBtn").addEventListener("click", async () => {
       try {
         if (typeof el.getChildren === "function") {
           const kids = await el.getChildren();
-          for (const k of (kids || [])) {
+          for (const k of kids || []) {
             await walk(k, depth + 1);
           }
         }
@@ -689,15 +878,20 @@ $("scanPageBtn").addEventListener("click", async () => {
     $("scanResults").style.display = "block";
 
     if (untracked.length === 0) {
-      $("untrackedList").innerHTML = '<div style="padding:8px; color:#8be88b;">✓ All clickable elements are tracked.</div>';
+      $("untrackedList").innerHTML =
+        '<div style="padding:8px; color:#8be88b;">✓ All clickable elements are tracked.</div>';
     } else {
-      $("untrackedList").innerHTML = untracked.map((f, idx) => `
+      $("untrackedList").innerHTML = untracked
+        .map(
+          (f, idx) => `
         <div class="untracked-item">
           <div class="untracked-text" title="${escapeHtml(f.text)}">${escapeHtml(f.text)}</div>
           <div class="untracked-tag">${escapeHtml(f.type)}</div>
           <button class="untracked-select-btn" data-idx="${idx}">Select</button>
         </div>
-      `).join("");
+      `,
+        )
+        .join("");
 
       // Attach select handlers
       document.querySelectorAll(".untracked-select-btn").forEach((btn) => {
@@ -710,21 +904,32 @@ $("scanPageBtn").addEventListener("click", async () => {
               await webflow.setSelectedElement(f.el);
             }
             // Switch to Create mode
-            document.querySelectorAll(".mode-btn").forEach((b) => b.classList.remove("active"));
-            const createBtn = document.querySelector('.mode-btn[data-mode="create"]') as HTMLElement;
+            document
+              .querySelectorAll(".mode-btn")
+              .forEach((b) => b.classList.remove("active"));
+            const createBtn = document.querySelector(
+              '.mode-btn[data-mode="create"]',
+            ) as HTMLElement;
             if (createBtn) createBtn.classList.add("active");
             $("createMode").style.display = "block";
             $("attachMode").style.display = "none";
             $("scanMode").style.display = "none";
             await refreshSelection();
           } catch (err: any) {
-            showStatus("varStatus", "Could not select element: " + err.message, false);
+            showStatus(
+              "varStatus",
+              "Could not select element: " + err.message,
+              false,
+            );
           }
         });
       });
     }
 
-    showStatus("varStatus", `✓ Scan complete: ${tracked}/${total} tracked, ${untracked.length} untracked`);
+    showStatus(
+      "varStatus",
+      `✓ Scan complete: ${tracked}/${total} tracked, ${untracked.length} untracked`,
+    );
   } catch (err: any) {
     showStatus("varStatus", "Scan failed: " + err.message, false);
   } finally {
