@@ -449,14 +449,15 @@ async function refreshSelectionForAttach() {
   try {
     const elRaw = await webflow.getSelectedElement();
     if (!elRaw) {
+      selectedElement = null;
       $("selectionBoxAttach").className = "selection-box empty";
       $("selectionBoxAttach").innerHTML =
         '<div class="sel-label">No element selected</div>' +
-        '<div class="sel-hint">Click an element first.</div>';
+        '<div class="sel-hint">Click an element on the canvas first.</div>';
       return;
     }
     const el: any = elRaw;
-    selectedElement = el;
+    selectedElement = el; // ← keep global in sync
     const elText = await readElementText(el);
     $("selectionBoxAttach").className = "selection-box has-selection";
     $("selectionBoxAttach").innerHTML =
@@ -517,12 +518,16 @@ $("refreshSelBtn").addEventListener("click", () => {
 
 try {
   webflow.subscribe?.("selectedelement", () => {
-    if ($("tab-variables").classList.contains("active")) {
-      nameManuallyEdited = false;
+    if (!$("tab-variables").classList.contains("active")) return;
+    nameManuallyEdited = false;
+    // Refresh whichever mode is currently visible
+    if ($("attachMode").style.display === "block") {
+      refreshSelectionForAttach();
+    } else if (
+      $("createMode").style.display === "block" ||
+      $("createMode").style.display === ""
+    ) {
       refreshSelection();
-      if ($("attachMode").style.display === "block") {
-        refreshSelectionForAttach();
-      }
     }
   });
 } catch {}
@@ -717,11 +722,6 @@ async function loadExistingVariables() {
 $("reloadVarsBtn").addEventListener("click", loadExistingVariables);
 
 $("attachVarBtn").addEventListener("click", async () => {
-  if (!selectedElement) {
-    showStatus("varStatus", "Select an element first", false);
-    return;
-  }
-
   const varName = ($("existingVarSelect") as HTMLSelectElement).value;
   const direction = ($("attachDirection") as HTMLSelectElement).value;
 
@@ -729,6 +729,29 @@ $("attachVarBtn").addEventListener("click", async () => {
     showStatus("varStatus", "Select a variable from the list", false);
     return;
   }
+
+  // ALWAYS re-fetch selected element fresh — don't trust cached selectedElement
+  // (mode switching can leave stale state)
+  let elRaw: any;
+  try {
+    elRaw = await webflow.getSelectedElement();
+  } catch (err: any) {
+    showStatus("varStatus", "Could not read selection: " + err.message, false);
+    return;
+  }
+
+  if (!elRaw) {
+    showStatus(
+      "varStatus",
+      "Click an element on the canvas first, then come back here",
+      false,
+    );
+    return;
+  }
+
+  // Update both the global and the attach selection box
+  selectedElement = elRaw;
+  await refreshSelectionForAttach();
 
   ($("attachVarBtn") as HTMLButtonElement).disabled = true;
   $("attachVarBtn").textContent = "Attaching…";
