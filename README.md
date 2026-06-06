@@ -10,6 +10,7 @@ Visitor browser ──► tracker.js ──► Azure Function broker ──► C
                                           └──► Azure Table Storage (sites)
 ```
 
+
 ## Structure
 
 ```
