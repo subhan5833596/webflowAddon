@@ -1,10 +1,12 @@
-@"
 node_modules/
-.env
-broker/broker-data.json
-extension/public/index.js
-extension/bundle.zip
 *.log
 .DS_Store
-Thumbs.db
-"@ | Out-File -FilePath .gitignore -Encoding ASCII
+.env
+.env.local
+broker/local.settings.json
+broker/.azurefunctions/
+broker/bin/
+broker/obj/
+broker-data.json
+.vscode/
+*.tmp

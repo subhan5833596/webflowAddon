@@ -1,0 +1,15 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "AzureWebJobsStorage": "PASTE_AZURE_STORAGE_CONNECTION_STRING",
+    "STORAGE_CONNECTION_STRING": "PASTE_AZURE_STORAGE_CONNECTION_STRING",
+    "ENCRYPTION_KEY": "GENERATE_64_HEX_CHAR_KEY",
+    "CENTREBLOCK_API": "https://prod.centreblock.net/api/v1/",
+    "DEBUG": "true"
+  },
+  "Host": {
+    "LocalHttpPort": 7071,
+    "CORS": "*"
+  }
+}
